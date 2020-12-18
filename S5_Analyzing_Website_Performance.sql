@@ -92,11 +92,6 @@ FROM first_pageview_per_session
 	LEFT JOIN website_pageviews
 	ON first_pageview_per_session.first_pageview = website_pageviews.website_pageview_id
 GROUP BY pageview_url;
-
-SELECT 
-    *
-FROM
-    orders;
     
 -- LECTURE: Analyzing Bounce Rates & Landing Page Tests
 
@@ -112,7 +107,7 @@ USE mavenfuzzyfactory;
 # Step 1: Find first website_pageview_id for relevant sessions
 # Step 2: Identify landing page for each session
 # Step 3: Count pageviews for each session (bounce session: no pageviews after that the first pageview)
-# Step 4: Summarize total sessions abd bounced sessions by landing page
+# Step 4: Summarize total sessions and bounced sessions by landing page
 
 # find minimum website pageview id associated with each relevant session
 SELECT
@@ -189,3 +184,69 @@ FROM sessions_w_landing_page_demo
 	LEFT JOIN bounced_sessions_only
 		ON sessions_w_landing_page_demo.website_session_id = bounced_sessions_only.website_session_id
 GROUP BY sessions_w_landing_page_demo.landing_page;
+
+-- ASSIGNMENT: Calculating Bounce Rates
+# Step 1: Find first website_pageview_id for relevant sessions
+# Step 2: Identify landing page for each session
+# Step 3: Count pageviews for each session (bounce session: no pageviews after that the first pageview)
+# Step 4: Summarize total sessions and bounced sessions by landing page
+
+USE mavenfuzzyfactory;
+
+# Step 1: first pageview for each session
+CREATE TEMPORARY TABLE first_pageviews
+SELECT
+	website_session_id,
+    MIN(website_pageview_id) AS min_pageview_id
+FROM website_pageviews
+WHERE created_at < '2012-06-14'
+GROUP BY
+	website_session_id;
+
+# Step 2: Include landing page, but restrict to home page only (redundant since all is homepage, but it's good practice)
+CREATE TEMPORARY TABLE sessions_w_home_landing_page
+SELECT
+	first_pageviews.website_session_id,
+    website_pageviews.pageview_url AS landing_page
+FROM first_pageviews
+	LEFT JOIN website_pageviews
+		ON website_pageviews.website_pageview_id = first_pageviews.min_pageview_id
+WHERE website_pageviews.pageview_url = '/home';
+
+SELECT * FROM sessions_w_home_landing_page;
+
+# Step 3: Count of pageviews per session, then filter to bounced_sessions where count = 1
+CREATE TEMPORARY TABLE bounced_sessions
+SELECT
+	sessions_w_home_landing_page.website_session_id,
+    sessions_w_home_landing_page.landing_page,
+    COUNT(DISTINCT website_pageviews.website_pageview_id) AS count_of_pages_viewed
+FROM sessions_w_home_landing_page
+    LEFT JOIN website_pageviews
+		ON sessions_w_home_landing_page.website_session_id = website_pageviews.website_session_id
+GROUP BY
+	sessions_w_home_landing_page.website_session_id
+HAVING
+	COUNT(website_pageviews.website_pageview_id) = 1;
+    
+SELECT * FROM bounced_sessions;
+
+# For each website_session, is it bounced or not? NULL if it isn't bounced.
+SELECT
+	sessions_w_home_landing_page.website_session_id,
+    bounced_sessions.website_session_id AS bounced_website_session_id
+FROM sessions_w_home_landing_page
+	LEFT JOIN bounced_sessions
+		ON sessions_w_home_landing_page.website_session_id = bounced_sessions.website_session_id
+ORDER BY
+	sessions_w_home_landing_page.website_session_id;
+    
+# Step 4: COUNT bounced vs. non-bounced sessions. This is our FINAL answer
+SELECT
+	COUNT(DISTINCT sessions_w_home_landing_page.website_session_id) as sessions,
+    COUNT(DISTINCT bounced_sessions.website_session_id) AS bounced_sessions,
+    COUNT(DISTINCT bounced_sessions.website_session_id) / COUNT(DISTINCT sessions_w_home_landing_page.website_session_id) AS bounce_rate
+FROM sessions_w_home_landing_page
+	LEFT JOIN bounced_sessions
+		ON sessions_w_home_landing_page.website_session_id = bounced_sessions.website_session_id;
+	
